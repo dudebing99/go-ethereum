@@ -1,4 +1,4 @@
-module go-ethereum
+module github.com/dudebing99/go-ethereum
 
 go 1.19
 
