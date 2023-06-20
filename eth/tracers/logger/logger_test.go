@@ -22,10 +22,10 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/dudebing99/go-ethereum/common"
+	"github.com/dudebing99/go-ethereum/core/state"
+	"github.com/dudebing99/go-ethereum/core/vm"
+	"github.com/dudebing99/go-ethereum/params"
 )
 
 type dummyContractRef struct {

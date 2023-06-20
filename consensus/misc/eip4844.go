@@ -19,7 +19,7 @@ package misc
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/dudebing99/go-ethereum/params"
 )
 
 var (

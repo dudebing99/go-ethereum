@@ -19,7 +19,7 @@
 package downloader
 
 import (
-	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/dudebing99/go-ethereum/metrics"
 )
 
 var (

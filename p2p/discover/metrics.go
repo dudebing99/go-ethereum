@@ -19,7 +19,7 @@ package discover
 import (
 	"net"
 
-	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/dudebing99/go-ethereum/metrics"
 )
 
 const (
