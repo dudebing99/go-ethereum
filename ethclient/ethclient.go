@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/dudebing99/go-ethereum"
 	"github.com/dudebing99/go-ethereum/common"
@@ -83,6 +84,10 @@ func (ec *Client) ChainID(ctx context.Context) (*big.Int, error) {
 // if you don't need all transactions or uncle headers.
 func (ec *Client) BlockByHash(ctx context.Context, hash common.Hash, showTransactionObjects bool) (*types.Block, error) {
 	return ec.getBlock(ctx, "eth_getBlockByHash", hash, showTransactionObjects)
+}
+
+func (ec *Client) BlockTimeByHash(ctx context.Context, hash common.Hash) (uint64, error) {
+	return ec.getBlocTime(ctx, "eth_getBlockByHash", hash, false)
 }
 
 // BlockByNumber returns a block from the current canonical chain. If number is nil, the
@@ -182,6 +187,29 @@ func (ec *Client) getBlock(ctx context.Context, method string, args ...interface
 		txs[i] = tx.tx
 	}
 	return types.NewBlockWithHeader(head).WithBody(txs, uncles).WithWithdrawals(body.Withdrawals), nil
+}
+
+func (ec *Client) getBlocTime(ctx context.Context, method string, args ...interface{}) (uint64, error) {
+	var raw json.RawMessage
+	err := ec.c.CallContext(ctx, &raw, method, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	// v = v + 27(which in hex is 0x1b)
+	raw = []byte(strings.ReplaceAll(string(raw), "\"v\": \"0x0\"", "\"v\": \"0x1b\""))
+
+	// Decode header and transactions.
+	var head *types.Header
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return 0, err
+	}
+	// When the block is not found, the API returns JSON null.
+	if head == nil {
+		return 0, ethereum.NotFound
+	}
+
+	return head.Time, nil
 }
 
 // HeaderByHash returns the block header with the given hash.
