@@ -90,8 +90,8 @@ func (ec *Client) BlockByHash(ctx context.Context, hash common.Hash) (*types.Blo
 //
 // Note that loading full blocks requires two requests. Use HeaderByNumber
 // if you don't need all transactions or uncle headers.
-func (ec *Client) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	return ec.getBlock(ctx, "eth_getBlockByNumber", toBlockNumArg(number), true)
+func (ec *Client) BlockByNumber(ctx context.Context, number *big.Int, showTransactionObjects bool) (*types.Block, error) {
+	return ec.getBlock(ctx, "eth_getBlockByNumber", toBlockNumArg(number), showTransactionObjects)
 }
 
 // BlockNumber returns the most recent block number
