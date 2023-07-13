@@ -227,7 +227,9 @@ func sanityCheckSignature(v *big.Int, r *big.Int, s *big.Int, maybeProtected boo
 		// Only EIP-155 signatures can be optionally protected. Since
 		// we determined this v value is not protected, it must be a
 		// raw 27 or 28.
-		plainV = byte(v.Uint64() - 27)
+		if v.Uint64() == 27 || v.Uint64() == 28 {
+			plainV = byte(v.Uint64() - 27)
+		}
 	} else {
 		// If the signature is not optionally protected, we assume it
 		// must already be equal to the recovery id.
