@@ -22,14 +22,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
-	"strings"
-
 	"github.com/dudebing99/go-ethereum"
 	"github.com/dudebing99/go-ethereum/common"
 	"github.com/dudebing99/go-ethereum/common/hexutil"
 	"github.com/dudebing99/go-ethereum/core/types"
 	"github.com/dudebing99/go-ethereum/rpc"
+	"math/big"
 )
 
 // Client defines typed wrappers for the Ethereum RPC API.
@@ -195,9 +193,6 @@ func (ec *Client) getBlockTime(ctx context.Context, method string, args ...inter
 	if err != nil {
 		return 0, err
 	}
-
-	// v = v + 27(which in hex is 0x1b)
-	raw = []byte(strings.ReplaceAll(string(raw), "\"v\": \"0x0\"", "\"v\": \"0x1b\""))
 
 	// Decode header and transactions.
 	var head *types.Header
