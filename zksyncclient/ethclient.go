@@ -15,21 +15,19 @@
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 // Package ethclient provides a client for the Ethereum RPC API.
-package ethclient
+package zksyncclient
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
-	"strings"
-
 	"github.com/dudebing99/go-ethereum"
 	"github.com/dudebing99/go-ethereum/common"
 	"github.com/dudebing99/go-ethereum/common/hexutil"
 	"github.com/dudebing99/go-ethereum/core/types"
 	"github.com/dudebing99/go-ethereum/rpc"
+	"math/big"
 )
 
 // Client defines typed wrappers for the Ethereum RPC API.
@@ -82,7 +80,7 @@ func (ec *Client) ChainID(ctx context.Context) (*big.Int, error) {
 //
 // Note that loading full blocks requires two requests. Use HeaderByHash
 // if you don't need all transactions or uncle headers.
-func (ec *Client) BlockByHash(ctx context.Context, hash common.Hash, showTransactionObjects bool) (*types.Block, error) {
+func (ec *Client) BlockByHash(ctx context.Context, hash common.Hash, showTransactionObjects bool) (*rpcBlock, error) {
 	return ec.getBlock(ctx, "eth_getBlockByHash", hash, showTransactionObjects)
 }
 
@@ -95,8 +93,21 @@ func (ec *Client) BlockTimeByHash(ctx context.Context, hash common.Hash) (uint64
 //
 // Note that loading full blocks requires two requests. Use HeaderByNumber
 // if you don't need all transactions or uncle headers.
-func (ec *Client) BlockByNumber(ctx context.Context, number *big.Int, showTransactionObjects bool) (*types.Block, error) {
+func (ec *Client) BlockByNumber(ctx context.Context, number *big.Int, showTransactionObjects bool) (*rpcBlock, error) {
 	return ec.getBlock(ctx, "eth_getBlockByNumber", toBlockNumArg(number), showTransactionObjects)
+}
+
+// TransactionReceipt returns the receipt of a transaction by transaction hash.
+// Note that the receipt is not available for pending transactions.
+func (ec *Client) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	var r *types.Receipt
+	err := ec.c.CallContext(ctx, &r, "eth_getTransactionReceipt", txHash)
+	if err == nil {
+		if r == nil {
+			return nil, ethereum.NotFound
+		}
+	}
+	return r, err
 }
 
 // BlockNumber returns the most recent block number
@@ -114,13 +125,69 @@ func (ec *Client) PeerCount(ctx context.Context) (uint64, error) {
 }
 
 type rpcBlock struct {
-	Hash         common.Hash         `json:"hash"`
-	Transactions []rpcTransaction    `json:"transactions"`
-	UncleHashes  []common.Hash       `json:"uncles"`
-	Withdrawals  []*types.Withdrawal `json:"withdrawals,omitempty"`
+	Hash             string           `json:"hash"`
+	ParentHash       string           `json:"parentHash"`
+	Sha3Uncles       string           `json:"sha3Uncles"`
+	Miner            string           `json:"miner"`
+	StateRoot        string           `json:"stateRoot"`
+	TransactionsRoot string           `json:"transactionsRoot"`
+	ReceiptsRoot     string           `json:"receiptsRoot"`
+	Number           string           `json:"number"`
+	L1BatchNumber    string           `json:"l1BatchNumber"`
+	GasUsed          string           `json:"gasUsed"`
+	GasLimit         string           `json:"gasLimit"`
+	BaseFeePerGas    string           `json:"baseFeePerGas"`
+	ExtraData        string           `json:"extraData"`
+	LogsBloom        string           `json:"logsBloom"`
+	Timestamp        string           `json:"timestamp"`
+	L1BatchTimestamp string           `json:"l1BatchTimestamp"`
+	Difficulty       string           `json:"difficulty"`
+	TotalDifficulty  string           `json:"totalDifficulty"`
+	SealFields       []interface{}    `json:"sealFields"`
+	Uncles           []interface{}    `json:"uncles"`
+	Transactions     []rpcTransaction `json:"transactions"`
+	Size             string           `json:"size"`
+	MixHash          string           `json:"mixHash"`
+	Nonce            string           `json:"nonce"`
 }
 
-func (ec *Client) getBlock(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
+type Transaction struct {
+	Hash                 string `json:"hash"`
+	Nonce                string `json:"nonce"`
+	BlockHash            string `json:"blockHash"`
+	BlockNumber          string `json:"blockNumber"`
+	TransactionIndex     string `json:"transactionIndex"`
+	From                 string `json:"from"`
+	To                   string `json:"to"`
+	Value                string `json:"value"`
+	GasPrice             string `json:"gasPrice"`
+	Gas                  string `json:"gas"`
+	Input                string `json:"input"`
+	V                    string `json:"v"`
+	R                    string `json:"r"`
+	S                    string `json:"s"`
+	Type                 string `json:"type"`
+	MaxFeePerGas         string `json:"maxFeePerGas"`
+	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas"`
+	ChainId              string `json:"chainId"`
+	L1BatchNumber        string `json:"l1BatchNumber"`
+	L1BatchTxIndex       string `json:"l1BatchTxIndex"`
+}
+
+type rpcTransaction struct {
+	tx *Transaction
+}
+
+func (tx *rpcTransaction) Transaction() Transaction {
+	return *tx.tx
+}
+
+func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
+	err := json.Unmarshal(msg, &tx.tx)
+	return err
+}
+
+func (ec *Client) getBlock(ctx context.Context, method string, args ...interface{}) (*rpcBlock, error) {
 	var raw json.RawMessage
 	err := ec.c.CallContext(ctx, &raw, method, args...)
 	if err != nil {
@@ -137,56 +204,12 @@ func (ec *Client) getBlock(ctx context.Context, method string, args ...interface
 		return nil, ethereum.NotFound
 	}
 
-	var body rpcBlock
-	if err := json.Unmarshal(raw, &body); err != nil {
+	var block rpcBlock
+	if err := json.Unmarshal(raw, &block); err != nil {
 		return nil, err
 	}
-	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
-	if head.UncleHash == types.EmptyUncleHash && len(body.UncleHashes) > 0 {
-		return nil, errors.New("server returned non-empty uncle list but block header indicates no uncles")
-	}
-	if head.UncleHash != types.EmptyUncleHash && len(body.UncleHashes) == 0 {
-		return nil, errors.New("server returned empty uncle list but block header indicates uncles")
-	}
-	if head.TxHash == types.EmptyTxsHash && len(body.Transactions) > 0 {
-		return nil, errors.New("server returned non-empty transaction list but block header indicates no transactions")
-	}
-	if head.TxHash != types.EmptyTxsHash && len(body.Transactions) == 0 {
-		return nil, errors.New("server returned empty transaction list but block header indicates transactions")
-	}
-	// Load uncles because they are not included in the block response.
-	var uncles []*types.Header
-	if len(body.UncleHashes) > 0 {
-		uncles = make([]*types.Header, len(body.UncleHashes))
-		reqs := make([]rpc.BatchElem, len(body.UncleHashes))
-		for i := range reqs {
-			reqs[i] = rpc.BatchElem{
-				Method: "eth_getUncleByBlockHashAndIndex",
-				Args:   []interface{}{body.Hash, hexutil.EncodeUint64(uint64(i))},
-				Result: &uncles[i],
-			}
-		}
-		if err := ec.c.BatchCallContext(ctx, reqs); err != nil {
-			return nil, err
-		}
-		for i := range reqs {
-			if reqs[i].Error != nil {
-				return nil, reqs[i].Error
-			}
-			if uncles[i] == nil {
-				return nil, fmt.Errorf("got null header for uncle %d of block %x", i, body.Hash[:])
-			}
-		}
-	}
-	// Fill the sender cache of transactions in the block.
-	txs := make([]*types.Transaction, len(body.Transactions))
-	for i, tx := range body.Transactions {
-		if tx.From != nil {
-			setSenderFromServer(tx.tx, *tx.From, body.Hash)
-		}
-		txs[i] = tx.tx
-	}
-	return types.NewBlockWithHeader(head).WithBody(txs, uncles).WithWithdrawals(body.Withdrawals), nil
+
+	return &block, nil
 }
 
 func (ec *Client) getBlockTime(ctx context.Context, method string, args ...interface{}) (uint64, error) {
@@ -195,9 +218,6 @@ func (ec *Client) getBlockTime(ctx context.Context, method string, args ...inter
 	if err != nil {
 		return 0, err
 	}
-
-	// v = v + 27(which in hex is 0x1b)
-	raw = []byte(strings.ReplaceAll(string(raw), "\"v\": \"0x0\"", "\"v\": \"0x1b\""))
 
 	// Decode header and transactions.
 	var head *types.Header
@@ -233,41 +253,6 @@ func (ec *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.H
 	return head, err
 }
 
-type rpcTransaction struct {
-	tx *types.Transaction
-	txExtraInfo
-}
-
-type txExtraInfo struct {
-	BlockNumber *string         `json:"blockNumber,omitempty"`
-	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
-	From        *common.Address `json:"from,omitempty"`
-}
-
-func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
-	if err := json.Unmarshal(msg, &tx.tx); err != nil {
-		return err
-	}
-	return json.Unmarshal(msg, &tx.txExtraInfo)
-}
-
-// TransactionByHash returns the transaction with the given hash.
-func (ec *Client) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
-	var json *rpcTransaction
-	err = ec.c.CallContext(ctx, &json, "eth_getTransactionByHash", hash)
-	if err != nil {
-		return nil, false, err
-	} else if json == nil {
-		return nil, false, ethereum.NotFound
-	} else if _, r, _ := json.tx.RawSignatureValues(); r == nil {
-		return nil, false, errors.New("server returned transaction without signature")
-	}
-	if json.From != nil && json.BlockHash != nil {
-		setSenderFromServer(json.tx, *json.From, *json.BlockHash)
-	}
-	return json.tx, json.BlockNumber == nil, nil
-}
-
 // TransactionSender returns the sender address of the given transaction. The transaction
 // must be known to the remote node and included in the blockchain at the given block and
 // index. The sender is the one derived by the protocol at the time of inclusion.
@@ -300,37 +285,6 @@ func (ec *Client) TransactionCount(ctx context.Context, blockHash common.Hash) (
 	var num hexutil.Uint
 	err := ec.c.CallContext(ctx, &num, "eth_getBlockTransactionCountByHash", blockHash)
 	return uint(num), err
-}
-
-// TransactionInBlock returns a single transaction at index in the given block.
-func (ec *Client) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
-	var json *rpcTransaction
-	err := ec.c.CallContext(ctx, &json, "eth_getTransactionByBlockHashAndIndex", blockHash, hexutil.Uint64(index))
-	if err != nil {
-		return nil, err
-	}
-	if json == nil {
-		return nil, ethereum.NotFound
-	} else if _, r, _ := json.tx.RawSignatureValues(); r == nil {
-		return nil, errors.New("server returned transaction without signature")
-	}
-	if json.From != nil && json.BlockHash != nil {
-		setSenderFromServer(json.tx, *json.From, *json.BlockHash)
-	}
-	return json.tx, err
-}
-
-// TransactionReceipt returns the receipt of a transaction by transaction hash.
-// Note that the receipt is not available for pending transactions.
-func (ec *Client) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
-	var r *types.Receipt
-	err := ec.c.CallContext(ctx, &r, "eth_getTransactionReceipt", txHash)
-	if err == nil {
-		if r == nil {
-			return nil, ethereum.NotFound
-		}
-	}
-	return r, err
 }
 
 // SyncProgress retrieves the current progress of the sync algorithm. If there's
