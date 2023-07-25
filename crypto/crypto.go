@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/dudebing99/go-ethereum/crypto/secp256k1"
 	"hash"
 	"io"
 	"math/big"
@@ -153,6 +154,14 @@ func toECDSA(d []byte, strict bool) (*ecdsa.PrivateKey, error) {
 		return nil, errors.New("invalid private key")
 	}
 	return priv, nil
+}
+
+func ToECDSAPub(pub []byte) *ecdsa.PublicKey {
+	if len(pub) == 0 {
+		return nil
+	}
+	x, y := elliptic.Unmarshal(secp256k1.S256(), pub)
+	return &ecdsa.PublicKey{Curve: secp256k1.S256(), X: x, Y: y}
 }
 
 // FromECDSA exports a private key into a binary dump.
